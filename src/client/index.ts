@@ -6,7 +6,11 @@ import {
   printClientHelp,
   printQuit,
 } from "../internal/gamelogic/gamelogic.js";
-import { declareAndBind, subscribeJSON } from "../internal/pubsub/index.js";
+import {
+  declareAndBind,
+  publishJSON,
+  subscribeJSON,
+} from "../internal/pubsub/index.js";
 import {
   ArmyMovesPrefix,
   ExchangePerilDirect,
@@ -20,6 +24,7 @@ import {
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
 import { commandMove, handleMove } from "../internal/gamelogic/move.js";
 import { handlePause } from "../internal/gamelogic/pause.js";
+import type { ArmyMove } from "../internal/gamelogic/gamedata.js";
 
 async function main() {
   console.log("Starting Peril client...");
@@ -59,7 +64,7 @@ async function main() {
     `${ArmyMovesPrefix}.${name}`,
     `${ArmyMovesPrefix}.*`,
     "transient",
-    handleMove
+    handlerMove(gameState)
   );
 
   while (true) {
@@ -74,7 +79,15 @@ async function main() {
         const armyMove = commandMove(gameState, input);
 
         if (armyMove) {
+          const channel = await conn.createConfirmChannel();
+          await publishJSON(
+            channel,
+            ExchangePerilTopic,
+            `${ArmyMovesPrefix}.*`,
+            armyMove
+          );
           console.log("The move was successful");
+          channel.close();
         }
         break;
       }
@@ -106,6 +119,13 @@ main().catch((err) => {
 export function handlerPause(gs: GameState): (ps: PlayingState) => void {
   return (ps: PlayingState) => {
     handlePause(gs, ps);
+    process.stdout.write("> ");
+  };
+}
+
+export function handlerMove(gs: GameState): (move: ArmyMove) => void {
+  return (move: ArmyMove) => {
+    handleMove(gs, move);
     process.stdout.write("> ");
   };
 }
