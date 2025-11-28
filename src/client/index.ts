@@ -6,9 +6,12 @@ import {
   printClientHelp,
   printQuit,
 } from "../internal/gamelogic/gamelogic.js";
-import { declareAndBind } from "../internal/pubsub/index.js";
+import { declareAndBind, subscribeJSON } from "../internal/pubsub/index.js";
 import { ExchangePerilDirect, PauseKey } from "../internal/routing/routing.js";
-import { GameState } from "../internal/gamelogic/gamestate.js";
+import {
+  GameState,
+  type PlayingState,
+} from "../internal/gamelogic/gamestate.js";
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
 import { commandMove } from "../internal/gamelogic/move.js";
 
@@ -26,7 +29,7 @@ async function main() {
   });
 
   const name = await clientWelcome();
-  const channelAndQueue = await declareAndBind(
+  const [channel, queue] = await declareAndBind(
     conn,
     ExchangePerilDirect,
     `${PauseKey}.${name}`,
@@ -35,9 +38,17 @@ async function main() {
   );
 
   const gameState = new GameState(name);
-  const input = await getInput();
+  await subscribeJSON(
+    conn,
+    ExchangePerilDirect,
+    `${PauseKey}.${name}`,
+    PauseKey,
+    "transient",
+    handlerPause(gameState)
+  );
 
   while (true) {
+    let input = await getInput();
     switch (input[0]) {
       case "spawn": {
         console.log(input);
@@ -76,3 +87,17 @@ main().catch((err) => {
   console.error("Fatal error:", err);
   process.exit(1);
 });
+
+export function handlerPause(gs: GameState): (ps: PlayingState) => void {
+  return (ps: PlayingState) => {
+    if (ps.isPaused) {
+      gs.pauseGame();
+      console.log("\nGame Paused");
+      console.log("> ");
+    } else {
+      gs.resumeGame();
+      console.log("\nGame Resumed");
+      console.log("> ");
+    }
+  };
+}
