@@ -1,7 +1,9 @@
 import type { ConfirmChannel, ChannelModel } from "amqplib";
 import amqp from "amqplib";
+import { ExchangeDeadLetterFanout } from "../routing/routing.js";
 
 export type SimpleQueueType = "durable" | "transient";
+export type AckType = "Ack" | "NackRequeue" | "NackDiscard";
 
 export async function publishJSON<T>(
   ch: ConfirmChannel,
@@ -28,7 +30,9 @@ export async function declareAndBind(
     autoDelete: queueType === "transient" ? true : false,
     exclusive: queueType === "transient" ? true : false,
     durable: queueType === "durable" ? true : false,
-    arguments: null,
+    arguments: {
+      "x-dead-letter-exchange": ExchangeDeadLetterFanout,
+    },
   });
 
   await channel.bindQueue(queueName, exchange, key);
@@ -41,7 +45,7 @@ export async function subscribeJSON<T>(
   queueName: string,
   key: string,
   queueType: SimpleQueueType,
-  handler: (data: T) => void
+  handler: (data: T) => AckType
 ): Promise<void> {
   const [channel, queue] = await declareAndBind(
     conn,
@@ -50,18 +54,39 @@ export async function subscribeJSON<T>(
     key,
     queueType
   );
-  await channel.consume(queue.queue, (msg) => {
-    if (msg) {
-      const content = msg.content.toString("utf-8");
-      if (!content) {
-        return;
-      }
 
-      const msgJSON = JSON.parse(content);
-      handler(msgJSON);
-      channel.ack(msg);
-    } else {
+  await channel.consume(queue.queue, (msg) => {
+    if (!msg) {
       console.log("Consuming cancelled.");
+      return;
+    }
+
+    const content = msg.content.toString("utf-8");
+    if (!content) {
+      return;
+    }
+
+    const msgParsedJSON = JSON.parse(content);
+    const ackState = handler(msgParsedJSON);
+
+    switch (ackState) {
+      case "Ack":
+        console.log(
+          `The following message has been acknowledged:\n${msgParsedJSON}`
+        );
+        channel.ack(msg);
+        break;
+      case "NackRequeue":
+        console.log(
+          `The following message has been negatively acknowledged (Requeue):\n${msgParsedJSON}`
+        );
+        channel.nack(msg, false, true);
+        break;
+      case "NackDiscard":
+        console.log(
+          `The following message has been negatively acknowledged (Discard):\n${msgParsedJSON}`
+        );
+        channel.nack(msg, false, false);
     }
   });
 }
