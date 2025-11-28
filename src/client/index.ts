@@ -7,13 +7,19 @@ import {
   printQuit,
 } from "../internal/gamelogic/gamelogic.js";
 import { declareAndBind, subscribeJSON } from "../internal/pubsub/index.js";
-import { ExchangePerilDirect, PauseKey } from "../internal/routing/routing.js";
+import {
+  ArmyMovesPrefix,
+  ExchangePerilDirect,
+  ExchangePerilTopic,
+  PauseKey,
+} from "../internal/routing/routing.js";
 import {
   GameState,
   type PlayingState,
 } from "../internal/gamelogic/gamestate.js";
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
-import { commandMove } from "../internal/gamelogic/move.js";
+import { commandMove, handleMove } from "../internal/gamelogic/move.js";
+import { handlePause } from "../internal/gamelogic/pause.js";
 
 async function main() {
   console.log("Starting Peril client...");
@@ -38,6 +44,7 @@ async function main() {
   );
 
   const gameState = new GameState(name);
+
   await subscribeJSON(
     conn,
     ExchangePerilDirect,
@@ -45,6 +52,14 @@ async function main() {
     PauseKey,
     "transient",
     handlerPause(gameState)
+  );
+  await subscribeJSON(
+    conn,
+    ExchangePerilTopic,
+    `${ArmyMovesPrefix}.${name}`,
+    `${ArmyMovesPrefix}.*`,
+    "transient",
+    handleMove
   );
 
   while (true) {
@@ -90,14 +105,7 @@ main().catch((err) => {
 
 export function handlerPause(gs: GameState): (ps: PlayingState) => void {
   return (ps: PlayingState) => {
-    if (ps.isPaused) {
-      gs.pauseGame();
-      console.log("\nGame Paused");
-      console.log("> ");
-    } else {
-      gs.resumeGame();
-      console.log("\nGame Resumed");
-      console.log("> ");
-    }
+    handlePause(gs, ps);
+    process.stdout.write("> ");
   };
 }
