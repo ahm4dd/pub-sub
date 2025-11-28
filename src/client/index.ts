@@ -40,14 +40,6 @@ async function main() {
   });
 
   const name = await clientWelcome();
-  const [channel, queue] = await declareAndBind(
-    conn,
-    ExchangePerilDirect,
-    `${PauseKey}.${name}`,
-    PauseKey,
-    "transient"
-  );
-
   const gameState = new GameState(name);
 
   await subscribeJSON(
