@@ -45,7 +45,7 @@ export async function subscribeJSON<T>(
   queueName: string,
   key: string,
   queueType: SimpleQueueType,
-  handler: (data: T) => AckType
+  handler: (data: T) => Promise<AckType> | AckType
 ): Promise<void> {
   const [channel, queue] = await declareAndBind(
     conn,
@@ -55,7 +55,7 @@ export async function subscribeJSON<T>(
     queueType
   );
 
-  await channel.consume(queue.queue, (msg) => {
+  await channel.consume(queue.queue, async (msg) => {
     if (!msg) {
       console.log("Consuming cancelled.");
       return;
@@ -67,7 +67,7 @@ export async function subscribeJSON<T>(
     }
 
     const msgParsedJSON = JSON.parse(content);
-    const ackState = handler(msgParsedJSON);
+    const ackState = await handler(msgParsedJSON);
 
     switch (ackState) {
       case "Ack":

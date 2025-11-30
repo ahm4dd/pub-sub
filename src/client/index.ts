@@ -6,30 +6,17 @@ import {
   printClientHelp,
   printQuit,
 } from "../internal/gamelogic/gamelogic.js";
-import {
-  declareAndBind,
-  publishJSON,
-  subscribeJSON,
-  type AckType,
-} from "../internal/pubsub/index.js";
+import { publishJSON, subscribeJSON } from "../internal/pubsub/index.js";
 import {
   ArmyMovesPrefix,
   ExchangePerilDirect,
   ExchangePerilTopic,
   PauseKey,
 } from "../internal/routing/routing.js";
-import {
-  GameState,
-  type PlayingState,
-} from "../internal/gamelogic/gamestate.js";
+import { GameState } from "../internal/gamelogic/gamestate.js";
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
-import {
-  commandMove,
-  handleMove,
-  MoveOutcome,
-} from "../internal/gamelogic/move.js";
-import { handlePause } from "../internal/gamelogic/pause.js";
-import type { ArmyMove } from "../internal/gamelogic/gamedata.js";
+import { commandMove } from "../internal/gamelogic/move.js";
+import { handlerMove, handlerPause } from "./handlers.js";
 
 async function main() {
   console.log("Starting Peril client...");
@@ -46,6 +33,7 @@ async function main() {
 
   const name = await clientWelcome();
   const gameState = new GameState(name);
+  const channel = await conn.createConfirmChannel();
 
   await subscribeJSON(
     conn,
@@ -61,7 +49,7 @@ async function main() {
     `${ArmyMovesPrefix}.${name}`,
     `${ArmyMovesPrefix}.*`,
     "transient",
-    handlerMove(gameState)
+    handlerMove(gameState, channel)
   );
 
   while (true) {
@@ -76,7 +64,6 @@ async function main() {
         const armyMove = commandMove(gameState, input);
 
         if (armyMove) {
-          const channel = await conn.createConfirmChannel();
           await publishJSON(
             channel,
             ExchangePerilTopic,
@@ -112,29 +99,3 @@ main().catch((err) => {
   console.error("Fatal error:", err);
   process.exit(1);
 });
-
-export function handlerPause(gs: GameState): (ps: PlayingState) => AckType {
-  return (ps: PlayingState) => {
-    handlePause(gs, ps);
-    process.stdout.write("> ");
-    return "Ack";
-  };
-}
-
-export function handlerMove(gs: GameState): (move: ArmyMove) => AckType {
-  return (move: ArmyMove) => {
-    const moveOutcome = handleMove(gs, move);
-    process.stdout.write("> ");
-
-    switch (moveOutcome) {
-      case MoveOutcome.Safe:
-        return "Ack";
-      case MoveOutcome.MakeWar:
-        return "Ack";
-      case MoveOutcome.SamePlayer:
-        return "NackDiscard";
-      default:
-        return "NackDiscard";
-    }
-  };
-}
