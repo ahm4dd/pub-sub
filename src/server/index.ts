@@ -1,5 +1,9 @@
 import amqp from "amqplib";
-import { declareAndBind, publishJSON } from "../internal/pubsub/index.js";
+import {
+  declareAndBind,
+  publishJSON,
+  subscribeMsgPack,
+} from "../internal/pubsub/index.js";
 import {
   ExchangePerilDirect,
   ExchangePerilTopic,
@@ -8,6 +12,7 @@ import {
 } from "../internal/routing/routing.js";
 import type { PlayingState } from "../internal/gamelogic/gamestate.js";
 import { getInput, printServerHelp } from "../internal/gamelogic/gamelogic.js";
+import { handlerLog } from "./handlers.js";
 async function main() {
   console.log("Starting Peril server...");
 
@@ -22,13 +27,16 @@ async function main() {
   });
 
   const channel = await conn.createConfirmChannel();
-  const logsChannelAndQueue = await declareAndBind(
+
+  await subscribeMsgPack(
     conn,
     ExchangePerilTopic,
     GameLogSlug,
     `${GameLogSlug}.*`,
-    "durable"
+    "durable",
+    handlerLog()
   );
+
   printServerHelp();
   while (true) {
     const input = await getInput();

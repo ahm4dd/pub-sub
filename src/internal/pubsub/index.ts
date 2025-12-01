@@ -1,6 +1,6 @@
 import type { ConfirmChannel, ChannelModel } from "amqplib";
 import amqp from "amqplib";
-import { encode } from "@msgpack/msgpack";
+import { encode, decode } from "@msgpack/msgpack";
 import { ExchangeDeadLetterFanout } from "../routing/routing.js";
 
 export type SimpleQueueType = "durable" | "transient";
@@ -98,6 +98,60 @@ export async function subscribeJSON<T>(
       case "NackDiscard":
         console.log(
           `The following message has been negatively acknowledged (Discard):\n${msgParsedJSON}`
+        );
+        channel.nack(msg, false, false);
+    }
+  });
+}
+
+export async function subscribeMsgPack<T>(
+  conn: amqp.ChannelModel,
+  exchange: string,
+  queueName: string,
+  key: string,
+  queueType: SimpleQueueType,
+  handler: (data: T) => Promise<AckType> | AckType
+): Promise<void> {
+  const [channel, queue] = await declareAndBind(
+    conn,
+    exchange,
+    queueName,
+    key,
+    queueType
+  );
+
+  await channel.consume(queue.queue, async (msg) => {
+    if (!msg) {
+      console.log("Consuming cancelled.");
+      return;
+    }
+
+    const content = msg.content;
+    if (!content) {
+      return;
+    }
+
+    const decodedContent = await decode(content);
+    const ackState = await handler(decodedContent as T);
+    console.log(`${"*".repeat(10)}`);
+    console.log("State : ", ackState);
+
+    switch (ackState) {
+      case "Ack":
+        console.log(
+          `The following message has been acknowledged:\n${decodedContent}`
+        );
+        channel.ack(msg);
+        break;
+      case "NackRequeue":
+        console.log(
+          `The following message has been negatively acknowledged (Requeue):\n${decodedContent}`
+        );
+        channel.nack(msg, false, true);
+        break;
+      case "NackDiscard":
+        console.log(
+          `The following message has been negatively acknowledged (Discard):\n${decodedContent}`
         );
         channel.nack(msg, false, false);
     }
