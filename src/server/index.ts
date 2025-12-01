@@ -37,6 +37,11 @@ async function main() {
     handlerLog()
   );
 
+  if (!process.stdin.isTTY) {
+    console.log("Non-interactive mode: skipping command input.");
+    return;
+  }
+
   printServerHelp();
   while (true) {
     const input = await getInput();

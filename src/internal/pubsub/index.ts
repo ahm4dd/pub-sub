@@ -122,13 +122,13 @@ export async function subscribeMsgPack<T>(
     queueType
   );
 
+  await channel.prefetch(1);
+
   await channel.consume(queue.queue, async (msg) => {
     if (!msg) {
       console.log("Consuming cancelled.");
       return;
     }
-
-    await channel.prefetch(1);
 
     const content = msg.content;
     if (!content) {
